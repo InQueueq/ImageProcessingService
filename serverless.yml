@@ -18,6 +18,7 @@ package:
     - node_modules/**
   exclude:
     - config.js
+    - lambdas/**
 
 functions:
   getImages:
