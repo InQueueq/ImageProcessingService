@@ -1,0 +1,142 @@
+service: awsapp
+
+provider:
+  name: aws
+  runtime: nodejs12.x
+  stage: dev
+  region: eu-central-1
+  apiGateway:
+    binaryMediaTypes:
+      - 'image/jpeg'
+      - 'image/png'
+
+plugins:
+  - serverless-iam-roles-per-function
+
+package:
+  include:
+    - node_modules/**
+  exclude:
+    - config.js
+
+functions:
+  getImages:
+    handler: lambdas/getImages.handler
+    environment:
+      dbhost: ${file(./config.js):config.db.host}
+      dbuser: ${file(./config.js):config.db.user}
+      dbbase: ${file(./config.js):config.db.base}
+      dbpassword: ${file(./config.js):config.db.password}
+      dbport: ${file(./config.js):config.db.port}
+    events:
+      - http:
+          path: images
+          method: get
+          authorizer:
+            name: cognito_auth
+            arn: ${file(./config.js):config.pool.arn}
+
+  uploadImage:
+    handler: lambdas/uploadImage.handler
+    environment:
+      bucket: ${file(./config.js):config.bucket.name}
+    iamRoleStatementsName: "uploadImageRole"
+    iamRoleStatements:
+      - Effect: "Allow"
+        Action:
+          - "s3:PutObject"
+          - "s3:GetObject"
+          - "s3:PutObjectVersionAcl"
+          - "s3:PutObjectAcl"
+        Resource: "arn:aws:s3:::${file(./config.js):config.bucket.name}/*"
+    events:
+      - http:
+          path: uploadimage
+          method: post
+          integration: lambda
+          authorizer:
+            name: cognito_auth
+            arn: ${file(./config.js):config.pool.arn}
+          request:
+            contentHandling: CONVERT_TO_TEXT
+            passThrough: WHEN_NO_TEMPLATES
+            template: 
+              image/jpeg: '{ "base64image": "$input.body", "contentType": "$input.params().header.get("Content-Type")" }' 
+              image/png:  '{ "base64image": "$input.body", "contentType": "$input.params().header.get("Content-Type")" }' 
+  
+  saveOnPut:
+    handler: lambdas/saveOnPut.handler
+    iamRoleStatementsName: "saveOnPutRole"
+    iamRoleStatements:
+      - Effect: "Allow"
+        Action:
+          - "s3:GetObject"
+        Resource: "arn:aws:s3:::${file(./config.js):config.bucket.name}/*"
+    environment:
+      dbhost: ${file(./config.js):config.db.host}
+      dbuser: ${file(./config.js):config.db.user}
+      dbbase: ${file(./config.js):config.db.base}
+      dbpassword: ${file(./config.js):config.db.password}
+      dbport: ${file(./config.js):config.db.port}
+    events:
+      - s3:
+          bucket: ${file(./config.js):config.bucket.name}
+          event: s3:ObjectCreated:*
+          existing: true
+
+  signUp:
+    handler: lambdas/signUp.handler
+    iamRoleStatementsName: "signUpRole"
+    iamRoleStatements:
+      - Effect: "Allow"
+        Action:
+          - "cognito-idp:AdminCreateUser"
+        Resource: ${file(./config.js):config.pool.arn}
+    environment:
+      userPoolId: ${file(./config.js):config.pool.id}
+    events:
+      - http:
+          path: register
+          method: post
+
+  signIn:
+    handler: lambdas/signIn.handler
+    iamRoleStatementsName: "signInRole"
+    iamRoleStatements:
+      - Effect: "Allow"
+        Action:
+          - "cognito-idp:AdminInitiateAuth"
+          - "cognito-idp:AdminRespondToAuthChallenge"
+        Resource: ${file(./config.js):config.pool.arn}
+    environment:
+      userPoolId: ${file(./config.js):config.pool.id}
+      clientId: ${file(./config.js):config.pool.clientId}
+    events:
+      - http:
+          path: login
+          method: post
+
+resources:
+  Resources:
+    CognitoUserPool:
+      Type: AWS::Cognito::UserPool
+      Properties:
+        UserPoolName: cognito_auth_user_pool
+        Policies:
+          PasswordPolicy:
+            MinimumLength: 8
+        UsernameAttributes:
+          - email
+        Schema:
+          - AttributeDataType: String
+            Name: email
+            Required: false
+
+    CognitoUserPoolClient:
+      Type: AWS::Cognito::UserPoolClient
+      Properties:
+        ClientName: cognito_auth_user_pool_client
+        UserPoolId: !Ref CognitoUserPool
+        ExplicitAuthFlows:
+          - ALLOW_ADMIN_USER_PASSWORD_AUTH
+          - ALLOW_REFRESH_TOKEN_AUTH
