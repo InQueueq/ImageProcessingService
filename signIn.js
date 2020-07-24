@@ -4,9 +4,9 @@ const cognito = new aws.CognitoIdentityServiceProvider()
 exports.handler = async event => {
     const bodyJson = JSON.parse(event.body);
     const authData = { 
-        UserPoolId: process.env.userPoolId,
+        UserPoolId: process.env.USER_POOL_ID,
         AuthFlow: "ADMIN_NO_SRP_AUTH",
-        ClientId: process.env.clientId,
+        ClientId: process.env.CLIENT_ID,
         AuthParameters: {
         USERNAME: bodyJson.email,
         PASSWORD: bodyJson.password,
@@ -15,8 +15,8 @@ exports.handler = async event => {
   const response = await cognito.adminInitiateAuth(authData).promise();
   if(response.ChallengeName){
     const confirmAuthData = { 
-        UserPoolId: process.env.userPoolId,
-        ClientId: process.env.clientId,
+        UserPoolId: process.env.USER_POOL_ID,
+        ClientId: process.env.CLIENT_ID,
         ChallengeName: "NEW_PASSWORD_REQUIRED",
         ChallengeResponses: {
                 USERNAME: bodyJson.email,

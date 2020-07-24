@@ -1,14 +1,21 @@
 service: awsapp
 
+custom:
+  USER_POOL_ARN: ${file(./config.js):config.pool.arn}
+
 provider:
   name: aws
   runtime: nodejs12.x
   stage: dev
   region: eu-central-1
-  apiGateway:
-    binaryMediaTypes:
-      - 'image/jpeg'
-      - 'image/png'
+  environment:
+    DB_HOST: ${file(./config.js):config.db.host}
+    DB_USER: ${file(./config.js):config.db.user}
+    DB_BASE: ${file(./config.js):config.db.base}
+    DB_PASSWORD: ${file(./config.js):config.db.password}
+    DB_PORT: ${file(./config.js):config.db.port}
+    USER_POOL_ID: ${file(./config.js):config.pool.id}
+    CLIENT_ID: ${file(./config.js):config.pool.clientId}
 
 plugins:
   - serverless-iam-roles-per-function
@@ -18,29 +25,22 @@ package:
     - node_modules/**
   exclude:
     - config.js
-    - lambdas/**
 
 functions:
   getImages:
-    handler: lambdas/getImages.handler
-    environment:
-      dbhost: ${file(./config.js):config.db.host}
-      dbuser: ${file(./config.js):config.db.user}
-      dbbase: ${file(./config.js):config.db.base}
-      dbpassword: ${file(./config.js):config.db.password}
-      dbport: ${file(./config.js):config.db.port}
+    handler: getImages.handler
     events:
       - http:
           path: images
           method: get
           authorizer:
             name: cognito_auth
-            arn: ${file(./config.js):config.pool.arn}
+            arn: ${self:custom.USER_POOL_ARN}
 
   uploadImage:
-    handler: lambdas/uploadImage.handler
+    handler: uploadImage.handler
     environment:
-      bucket: ${file(./config.js):config.bucket.name}
+      BUCKET: !Ref Bucket
     iamRoleStatementsName: "uploadImageRole"
     iamRoleStatements:
       - Effect: "Allow"
@@ -49,76 +49,80 @@ functions:
           - "s3:GetObject"
           - "s3:PutObjectVersionAcl"
           - "s3:PutObjectAcl"
-        Resource: "arn:aws:s3:::${file(./config.js):config.bucket.name}/*"
+        Resource: 
+          Fn::Join:
+          - ''
+          - - 'arn:aws:s3:::'
+            - Ref: Bucket
     events:
       - http:
           path: uploadimage
           method: post
-          integration: lambda
           authorizer:
             name: cognito_auth
-            arn: ${file(./config.js):config.pool.arn}
-          request:
-            contentHandling: CONVERT_TO_TEXT
-            passThrough: WHEN_NO_TEMPLATES
-            template: 
-              image/jpeg: '{ "base64image": "$input.body", "contentType": "$input.params().header.get("Content-Type")" }' 
-              image/png:  '{ "base64image": "$input.body", "contentType": "$input.params().header.get("Content-Type")" }' 
-  
+            arn: ${self:custom.USER_POOL_ARN}
+
   saveOnPut:
-    handler: lambdas/saveOnPut.handler
+    handler: saveOnPut.handler
     iamRoleStatementsName: "saveOnPutRole"
     iamRoleStatements:
       - Effect: "Allow"
         Action:
           - "s3:GetObject"
-        Resource: "arn:aws:s3:::${file(./config.js):config.bucket.name}/*"
-    environment:
-      dbhost: ${file(./config.js):config.db.host}
-      dbuser: ${file(./config.js):config.db.user}
-      dbbase: ${file(./config.js):config.db.base}
-      dbpassword: ${file(./config.js):config.db.password}
-      dbport: ${file(./config.js):config.db.port}
+        Resource: 
+          Fn::Join:
+          - ''
+          - - 'arn:aws:s3:::'
+            - Ref: Bucket
     events:
       - s3:
-          bucket: ${file(./config.js):config.bucket.name}
+          bucket: !Ref Bucket
           event: s3:ObjectCreated:*
           existing: true
 
   signUp:
-    handler: lambdas/signUp.handler
+    handler: signUp.handler
     iamRoleStatementsName: "signUpRole"
     iamRoleStatements:
       - Effect: "Allow"
         Action:
           - "cognito-idp:AdminCreateUser"
-        Resource: ${file(./config.js):config.pool.arn}
-    environment:
-      userPoolId: ${file(./config.js):config.pool.id}
+        Resource: ${self:custom.USER_POOL_ARN}
     events:
       - http:
           path: register
           method: post
 
   signIn:
-    handler: lambdas/signIn.handler
+    handler: signIn.handler
     iamRoleStatementsName: "signInRole"
     iamRoleStatements:
       - Effect: "Allow"
         Action:
           - "cognito-idp:AdminInitiateAuth"
           - "cognito-idp:AdminRespondToAuthChallenge"
-        Resource: ${file(./config.js):config.pool.arn}
-    environment:
-      userPoolId: ${file(./config.js):config.pool.id}
-      clientId: ${file(./config.js):config.pool.clientId}
+        Resource: ${self:custom.USER_POOL_ARN}
     events:
       - http:
           path: login
           method: post
 
+
 resources:
   Resources:
+
+    Bucket:
+      Type: AWS::S3::Bucket
+      Properties:
+        BucketName: aws-app-images-inqq
+        VersioningConfiguration:
+          Status: Enabled
+        CorsConfiguration:
+          CorsRules:
+            - AllowedHeaders: ['*']
+              AllowedMethods: [POST, GET, PUT, HEAD, DELETE]
+              AllowedOrigins: ['*']
+    
     CognitoUserPool:
       Type: AWS::Cognito::UserPool
       Properties:

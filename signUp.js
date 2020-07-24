@@ -5,7 +5,7 @@ exports.handler = async event => {
     try{
         const bodyJson = JSON.parse(event.body)
         await cognito.adminCreateUser({
-            UserPoolId: process.env.userPoolId,
+            UserPoolId: process.env.USER_POOL_ID,
             Username: bodyJson.email,
             MessageAction: 'SUPPRESS',
             TemporaryPassword: bodyJson.password
