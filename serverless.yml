@@ -17,6 +17,7 @@ provider:
     USER_POOL_ID: ${file(./config.js):config.pool.id}
     CLIENT_ID: ${file(./config.js):config.pool.clientId}
 
+
 plugins:
   - serverless-iam-roles-per-function
 
@@ -27,8 +28,9 @@ package:
     - config.js
 
 functions:
+
   getImages:
-    handler: getImages.handler
+    handler: lambdas/getImages.handler
     events:
       - http:
           path: images
@@ -38,7 +40,7 @@ functions:
             arn: ${self:custom.USER_POOL_ARN}
 
   uploadImage:
-    handler: uploadImage.handler
+    handler: lambdas/uploadImage.handler
     environment:
       BUCKET: !Ref Bucket
     iamRoleStatementsName: "uploadImageRole"
@@ -63,7 +65,7 @@ functions:
             arn: ${self:custom.USER_POOL_ARN}
 
   saveOnPut:
-    handler: saveOnPut.handler
+    handler: lambdas/saveOnPut.handler
     iamRoleStatementsName: "saveOnPutRole"
     iamRoleStatements:
       - Effect: "Allow"
@@ -79,9 +81,12 @@ functions:
           bucket: !Ref Bucket
           event: s3:ObjectCreated:*
           existing: true
+          authorizer:
+            name: cognito_auth
+            arn: ${self:custom.USER_POOL_ARN}
 
   signUp:
-    handler: signUp.handler
+    handler: lambdas/signUp.handler
     iamRoleStatementsName: "signUpRole"
     iamRoleStatements:
       - Effect: "Allow"
@@ -94,7 +99,7 @@ functions:
           method: post
 
   signIn:
-    handler: signIn.handler
+    handler: lambdas/signIn.handler
     iamRoleStatementsName: "signInRole"
     iamRoleStatements:
       - Effect: "Allow"

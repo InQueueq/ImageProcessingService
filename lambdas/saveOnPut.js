@@ -16,13 +16,14 @@ exports.handler = async (event, context) =>{
         context.callbackWaitsForEmptyEventLoop = false;
         const bucket = event.Records[0].s3.bucket.name;
         const key = event.Records[0].s3.object.key;
+        const username = event.Records[0].s3.object.key.split("@")[0];
         const params = {
             Bucket: bucket,
             Key: key,
         };
         const data = await s3.getObject(params).promise();
         if(data){
-            const res = await pool.query(`INSERT INTO images("link") VALUES('https://${params.Bucket}.s3.amazonaws.com/${params.Key}')`)
+            const res = await pool.query(`INSERT INTO images("link", "uploadUser") VALUES('https://${params.Bucket}.s3.amazonaws.com/${params.Key}','${username}')`)
             return {
                 statusCode: 200,
                 body: JSON.stringify(res)
